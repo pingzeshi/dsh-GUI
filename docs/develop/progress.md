@@ -167,3 +167,21 @@
 - [x] 明确记录 WSL `~/.dsh` 与 Windows `%USERPROFILE%\.dsh` 相互独立，不进行
   隐式会话或插件迁移。完整记录见
   `docs/migration/2026-08-20-no-wsl-fallback-validation.md`。
+
+## 会话 7：启动页“深海测绘”视觉重制
+
+- [x] 以矿物白、石墨黑和 DeepSeek 钴蓝重制启动页，保留官方鲸鱼点阵，新增
+  测绘等高线、洋流、扫描线和克制的粒子动效。
+- [x] 删除旧深色极光、液态玻璃字符和自动轮播的模拟状态；改为“环境 / 运行时 /
+  界面”三段真实进度。
+- [x] 主进程接入 WSL/Windows 运行时准备、Windows 归档部署和本地 URL 连接事件；
+  页面加载竞态通过状态重放处理。
+- [x] 保留 `prefers-reduced-motion` 静态降级，并补齐有序步骤、当前步骤和实时状态
+  的无障碍语义。
+- [x] `npm run build` 与 WSL 完整 `npm run smoke` 通过，启动日志顺序为
+  environment → runtime → interface → interface/connect，最终 `SMOKE_OK`。
+- [x] 应用内浏览器验证 1360×860 与最小 940×620 均无溢出，三阶段和鼠标粒子
+  交互无页面错误；真实 Electron 窗口成功从启动页进入主界面，既有工作区与会话
+  列表可见。
+- [x] 详细设计、概念稿忠实度和验证矩阵见
+  `docs/develop/splash-redesign.md`。

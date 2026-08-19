@@ -8,6 +8,7 @@ export interface DshCallbacks {
   onExit(code: number | null): void
   onError(message: string): void
   onLog?(line: string): void
+  onStage?(stage: 'runtime' | 'interface', message: string): void
 }
 
 interface WslRuntime {
@@ -484,6 +485,12 @@ export class DshProcess {
 
   private async prepareAndStart(extraArgs: string[]): Promise<void> {
     let resolved: ResolvedCommand
+    this.callbacks.onStage?.(
+      'runtime',
+      this.selection.mode === 'wsl'
+        ? '正在准备 WSL 内嵌运行时…'
+        : '正在准备 Windows 本机运行时…',
+    )
     try {
       resolved = this.selection.mode === 'wsl'
         ? await resolveDsh(
@@ -495,7 +502,18 @@ export class DshProcess {
           this.selection.embeddedRuntime,
           extraArgs,
           (child) => { this.provisionChild = child },
-          (message) => this.callbacks.onLog?.(message),
+          (message) => {
+            this.callbacks.onLog?.(message)
+            if (message.startsWith('正在校验 Windows 运行时归档')) {
+              this.callbacks.onStage?.('runtime', '正在校验 Windows 运行时归档…')
+            } else if (message.startsWith('正在解压 Windows 运行时')) {
+              this.callbacks.onStage?.('runtime', '正在部署 Windows 本机运行时…')
+            } else if (message.startsWith('正在验证 Windows 内嵌')) {
+              this.callbacks.onStage?.('runtime', '正在验证 Windows 内嵌运行时…')
+            } else if (message.startsWith('复用已部署的 Windows 运行时')) {
+              this.callbacks.onStage?.('runtime', '正在校验已部署的 Windows 运行时…')
+            }
+          },
         )
     } catch (err) {
       if (this.stopped) return
@@ -518,6 +536,7 @@ export class DshProcess {
     if (this.stopped) return
 
     this.runtime = resolved.runtime
+    this.callbacks.onStage?.('interface', '正在启动本地界面…')
     if (resolved.runtime.kind === 'wsl') {
       this.callbacks.onLog?.(
         `启动 WSL dsh (${resolved.runtime.distro}, ${resolved.runtime.source}:${resolved.runtime.runtimeId}): ` +

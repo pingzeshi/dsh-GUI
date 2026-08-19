@@ -22,6 +22,19 @@ let smokeFinished = false
 let pageErrors: string[] = []
 
 type RequestedRuntimeMode = 'auto' | 'wsl' | 'win32'
+type SplashPhase = 'environment' | 'runtime' | 'interface'
+
+interface SplashStatus {
+  phase: SplashPhase
+  message: string
+  note: string
+}
+
+let splashStatus: SplashStatus = {
+  phase: 'environment',
+  message: '正在检测运行环境…',
+  note: '首次启动会校验并部署内嵌运行时',
+}
 
 interface RuntimePreference {
   schemaVersion: 1
@@ -44,6 +57,48 @@ function page(name: string): string {
   return path.join(app.getAppPath(), 'renderer', name)
 }
 
+function isSplashPage(window: BrowserWindow): boolean {
+  try {
+    return new URL(window.webContents.getURL()).pathname.endsWith('/renderer/splash.html')
+  } catch {
+    return false
+  }
+}
+
+function applySplashStatus(): void {
+  const window = win
+  if (!window || window.isDestroyed() || !isSplashPage(window)) return
+  const args = JSON.stringify([
+    splashStatus.phase,
+    splashStatus.message,
+    splashStatus.note,
+  ])
+  void window.webContents.executeJavaScript(
+    `window.dshSplash?.setPhase(...${args})`,
+    true,
+  ).catch((err) => {
+    if (SMOKE || DEV) log(`更新启动页状态失败：${(err as Error).message}`)
+  })
+}
+
+function updateSplashStatus(
+  phase: SplashPhase,
+  message: string,
+  note?: string,
+): void {
+  splashStatus = {
+    phase,
+    message,
+    note: note || (
+      phase === 'interface'
+        ? '本地服务就绪后将自动进入工作界面'
+        : '首次启动会校验并部署内嵌运行时'
+    ),
+  }
+  if (SMOKE || DEV) log(`SPLASH_STAGE: ${phase} — ${message}`)
+  applySplashStatus()
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1360,
@@ -52,7 +107,7 @@ function createWindow(): void {
     minHeight: 620,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f4f5f2',
     icon: assetPath('icon.png'),
     webPreferences: {
       contextIsolation: true,
@@ -60,8 +115,8 @@ function createWindow(): void {
       sandbox: true,
     },
   })
-  win.loadFile(page('splash.html'))
   win.once('ready-to-show', () => win?.show())
+  win.webContents.on('did-finish-load', applySplashStatus)
   win.on('close', (e) => {
     // 有托盘时关闭按钮 = 最小化到托盘；否则直接退出
     if (!quitting && tray) {
@@ -85,6 +140,9 @@ function createWindow(): void {
       }
     }) as never,
   )
+  void win.loadFile(page('splash.html')).catch((err) => {
+    showError(`加载启动页失败：${err.message}`)
+  })
 }
 
 function showError(message: string): void {
@@ -257,6 +315,7 @@ async function smokeBootCheck(url: string): Promise<void> {
 
 async function startDsh(): Promise<void> {
   let selection: DshRuntimeSelection | null
+  updateSplashStatus('environment', '正在检测运行环境…')
   try {
     const runtimeDirectory = embeddedRuntimeDirectory(
       app.getAppPath(),
@@ -279,6 +338,7 @@ async function startDsh(): Promise<void> {
     {
       onUrl: (url) => {
         log(`DSH_URL: ${url}`)
+        updateSplashStatus('interface', '正在连接本地界面…')
         if (SMOKE) {
           void smokeBootCheck(url)
           return
@@ -295,6 +355,7 @@ async function startDsh(): Promise<void> {
       },
       onError: (msg) => showError(msg),
       onLog: DEV || SMOKE ? (line) => log(`dsh: ${line}`) : undefined,
+      onStage: (stage, message) => updateSplashStatus(stage, message),
     },
     selection,
   )
