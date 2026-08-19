@@ -8,6 +8,9 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "runtime:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1",
+    "runtime:rebuild": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -Force",
+    "runtime:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -VerifyOnly",
     "start": "npm run build && electron .",
     "start:dev": "npm run build && electron . --dev",
     "smoke": "npm run build && node scripts/smoke.js",

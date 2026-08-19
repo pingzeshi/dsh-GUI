@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "dsh-0.1.0-rc.7-node-24.15.0-linux-x64",
+  "platform": "linux",
+  "arch": "x64",
+  "nodeVersion": "24.15.0",
+  "nodeArchiveSha256": "472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6",
+  "pnpmVersion": "11.22.0",
+  "dshVersion": "0.1.0-rc.7",
+  "archiveName": "dsh-linux-x64.tar.gz"
+}

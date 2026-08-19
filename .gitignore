@@ -4,3 +4,5 @@ release/
 *.log
 .omo
 .codegraph
+/runtime/*.tar.gz
+/runtime/*.tmp
