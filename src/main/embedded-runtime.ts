@@ -15,6 +15,20 @@ export interface EmbeddedRuntimeSpec {
   archivePath: string
 }
 
+export interface EmbeddedWin32RuntimeSpec {
+  schemaVersion: 1
+  runtimeId: string
+  platform: 'win32'
+  arch: 'x64'
+  nodeVersion: string
+  pnpmVersion: string
+  dshVersion: string
+  archiveName: string
+  archiveSize: number
+  archiveSha256: string
+  archivePath: string
+}
+
 function expectRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('manifest 根节点不是对象')
@@ -46,9 +60,14 @@ export function embeddedRuntimeDirectory(
   return isPackaged ? path.join(resourcesPath, 'runtime') : path.join(appPath, 'runtime')
 }
 
-/** Validate the small manifest and archive size before handing it to WSL. */
-export function loadEmbeddedRuntime(runtimeDirectory: string): EmbeddedRuntimeSpec {
-  const manifestPath = path.join(runtimeDirectory, 'manifest.json')
+type RuntimePlatform = 'linux' | 'win32'
+
+function loadRuntimeManifest(
+  runtimeDirectory: string,
+  manifestName: string,
+  expectedPlatform: RuntimePlatform,
+): EmbeddedRuntimeSpec | EmbeddedWin32RuntimeSpec {
+  const manifestPath = path.join(runtimeDirectory, manifestName)
   let manifest: Record<string, unknown>
   try {
     manifest = expectRecord(JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as unknown)
@@ -57,8 +76,8 @@ export function loadEmbeddedRuntime(runtimeDirectory: string): EmbeddedRuntimeSp
   }
 
   if (manifest.schemaVersion !== 1) throw new Error('内嵌运行时 manifest 版本不受支持')
-  if (manifest.platform !== 'linux' || manifest.arch !== 'x64') {
-    throw new Error('内嵌运行时必须是 linux-x64')
+  if (manifest.platform !== expectedPlatform || manifest.arch !== 'x64') {
+    throw new Error(`内嵌运行时必须是 ${expectedPlatform}-x64`)
   }
 
   const runtimeId = expectString(manifest, 'runtimeId', /^[a-z0-9][a-z0-9._-]+$/)
@@ -92,11 +111,10 @@ export function loadEmbeddedRuntime(runtimeDirectory: string): EmbeddedRuntimeSp
     throw new Error(`内嵌运行时归档大小不匹配（期望 ${archiveSize}，实际 ${stat.size}）`)
   }
 
-  return {
-    schemaVersion: 1,
+  const common = {
+    schemaVersion: 1 as const,
     runtimeId,
-    platform: 'linux',
-    arch: 'x64',
+    arch: 'x64' as const,
     nodeVersion,
     pnpmVersion,
     dshVersion,
@@ -105,4 +123,24 @@ export function loadEmbeddedRuntime(runtimeDirectory: string): EmbeddedRuntimeSp
     archiveSha256,
     archivePath,
   }
+  if (expectedPlatform === 'linux') {
+    return { ...common, platform: 'linux' }
+  }
+  return { ...common, platform: 'win32' }
+}
+
+/** Validate the Linux manifest and archive size before handing it to WSL. */
+export function loadEmbeddedRuntime(runtimeDirectory: string): EmbeddedRuntimeSpec {
+  return loadRuntimeManifest(runtimeDirectory, 'manifest.json', 'linux') as EmbeddedRuntimeSpec
+}
+
+/** Validate the Windows manifest and archive size before native provisioning. */
+export function loadEmbeddedWin32Runtime(
+  runtimeDirectory: string,
+): EmbeddedWin32RuntimeSpec {
+  return loadRuntimeManifest(
+    runtimeDirectory,
+    'manifest-win32-x64.json',
+    'win32',
+  ) as EmbeddedWin32RuntimeSpec
 }

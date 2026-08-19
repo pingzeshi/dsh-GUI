@@ -1,9 +1,13 @@
-import { app, BrowserWindow, Tray, Menu, shell, nativeImage } from 'electron'
+import { app, BrowserWindow, Tray, Menu, shell, nativeImage, dialog } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
-import { DshProcess } from './dsh'
-import { embeddedRuntimeDirectory, loadEmbeddedRuntime } from './embedded-runtime'
-import type { EmbeddedRuntimeSpec } from './embedded-runtime'
+import { DshProcess, detectWslAvailability } from './dsh'
+import type { DshRuntimeSelection } from './dsh'
+import {
+  embeddedRuntimeDirectory,
+  loadEmbeddedRuntime,
+  loadEmbeddedWin32Runtime,
+} from './embedded-runtime'
 
 const SMOKE = !!process.env.DSH_SMOKE
 const DEV = process.argv.includes('--dev')
@@ -16,6 +20,13 @@ let stoppingDsh = false
 let smokeTimer: NodeJS.Timeout | null = null
 let smokeFinished = false
 let pageErrors: string[] = []
+
+type RequestedRuntimeMode = 'auto' | 'wsl' | 'win32'
+
+interface RuntimePreference {
+  schemaVersion: 1
+  noWslFallback: 'win32'
+}
 
 function log(msg: string): void {
   console.log(`[dsh-desktop] ${msg}`)
@@ -86,6 +97,115 @@ function showError(message: string): void {
   }
 }
 
+function requestedRuntimeMode(): RequestedRuntimeMode {
+  const value = (process.env.DSH_RUNTIME_MODE || 'auto').trim().toLowerCase()
+  if (value !== 'auto' && value !== 'wsl' && value !== 'win32') {
+    throw new Error('DSH_RUNTIME_MODE 仅支持 auto、wsl 或 win32')
+  }
+  return value
+}
+
+function runtimePreferencePath(): string {
+  const override = (process.env.DSH_RUNTIME_PREFERENCE_PATH || '').trim()
+  if (override) {
+    if (!path.win32.isAbsolute(override) || /[\r\n\0]/.test(override)) {
+      throw new Error('DSH_RUNTIME_PREFERENCE_PATH 必须是 Windows 绝对路径')
+    }
+    return path.win32.normalize(override)
+  }
+  return path.join(app.getPath('userData'), 'runtime-preference.json')
+}
+
+async function hasWin32FallbackPreference(): Promise<boolean> {
+  try {
+    const value = JSON.parse(
+      await fs.promises.readFile(runtimePreferencePath(), 'utf8'),
+    ) as Partial<RuntimePreference>
+    return value.schemaVersion === 1 && value.noWslFallback === 'win32'
+  } catch {
+    return false
+  }
+}
+
+async function saveWin32FallbackPreference(): Promise<void> {
+  const preferencePath = runtimePreferencePath()
+  await fs.promises.mkdir(path.dirname(preferencePath), { recursive: true })
+  const value: RuntimePreference = { schemaVersion: 1, noWslFallback: 'win32' }
+  await fs.promises.writeFile(preferencePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+async function selectRuntime(
+  runtimeDirectory: string,
+): Promise<DshRuntimeSelection | null> {
+  const requested = requestedRuntimeMode()
+  if (requested === 'wsl') {
+    return { mode: 'wsl', embeddedRuntime: loadEmbeddedRuntime(runtimeDirectory) }
+  }
+  if (requested === 'win32') {
+    return {
+      mode: 'win32',
+      embeddedRuntime: loadEmbeddedWin32Runtime(runtimeDirectory),
+    }
+  }
+
+  const availability = await detectWslAvailability()
+  if (availability.available) {
+    log(`已检测到 WSL 发行版 ${availability.distro}，使用 WSL 模式`)
+    return { mode: 'wsl', embeddedRuntime: loadEmbeddedRuntime(runtimeDirectory) }
+  }
+
+  log(`WSL 不可用（${availability.distro}）：${availability.reason || '未知原因'}`)
+  const win32Runtime = loadEmbeddedWin32Runtime(runtimeDirectory)
+  if (await hasWin32FallbackPreference()) {
+    log('已读取用户此前确认的 Windows 本机模式偏好')
+    return { mode: 'win32', embeddedRuntime: win32Runtime }
+  }
+
+  const unattendedChoice = (process.env.DSH_NO_WSL_CHOICE || '').trim().toLowerCase()
+  let useWin32: boolean
+  if (unattendedChoice) {
+    if (unattendedChoice !== 'win32' && unattendedChoice !== 'exit') {
+      throw new Error('DSH_NO_WSL_CHOICE 仅支持 win32 或 exit')
+    }
+    useWin32 = unattendedChoice === 'win32'
+    log(`使用自动化的无 WSL 选择：${unattendedChoice}`)
+  } else {
+    const detail = [
+      `未能使用 WSL 发行版“${availability.distro}”。`,
+      availability.reason ? `原因：${availability.reason}` : '',
+      '',
+      '选择“使用 Windows 本机模式”后，程序会解压并使用安装包内置的 Node.js 与 dsh，',
+      '不会安装全局 npm 包；会话和插件配置使用 %USERPROFILE%\\.dsh，与 WSL ~/.dsh 相互独立。',
+      '',
+      '选择“暂不配置并退出”不会在非 WSL 环境部署或配置 dsh。',
+    ].filter((line) => line !== '').join('\n')
+    const options = {
+      type: 'question' as const,
+      title: '未检测到可用的 WSL',
+      message: '是否改用 Windows 本机环境配置 dsh？',
+      detail,
+      buttons: ['使用 Windows 本机模式', '暂不配置并退出'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }
+    const result = win && !win.isDestroyed()
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options)
+    useWin32 = result.response === 0
+  }
+
+  if (!useWin32) {
+    log('用户选择暂不在非 WSL 环境配置 dsh，应用退出')
+    quitting = true
+    app.quit()
+    return null
+  }
+  await saveWin32FallbackPreference()
+  log('用户已确认使用 Windows 本机模式')
+  return { mode: 'win32', embeddedRuntime: win32Runtime }
+}
+
 function finishSmoke(code: number, reason?: string): void {
   if (smokeFinished) return
   smokeFinished = true
@@ -135,17 +255,19 @@ async function smokeBootCheck(url: string): Promise<void> {
   finishSmoke(1, '__DSH_BOOT__ 20 秒内未注入')
 }
 
-function startDsh(): void {
-  let embeddedRuntime: EmbeddedRuntimeSpec
+async function startDsh(): Promise<void> {
+  let selection: DshRuntimeSelection | null
   try {
     const runtimeDirectory = embeddedRuntimeDirectory(
       app.getAppPath(),
       process.resourcesPath,
       app.isPackaged,
     )
-    embeddedRuntime = loadEmbeddedRuntime(runtimeDirectory)
+    selection = await selectRuntime(runtimeDirectory)
+    if (!selection) return
+    const embeddedRuntime = selection.embeddedRuntime
     log(
-      `内嵌运行时: ${embeddedRuntime.runtimeId}, ` +
+      `内嵌运行时 (${selection.mode}): ${embeddedRuntime.runtimeId}, ` +
         `${embeddedRuntime.archiveSize} bytes, ${embeddedRuntime.archiveSha256}`,
     )
   } catch (err) {
@@ -174,7 +296,7 @@ function startDsh(): void {
       onError: (msg) => showError(msg),
       onLog: DEV || SMOKE ? (line) => log(`dsh: ${line}`) : undefined,
     },
-    embeddedRuntime,
+    selection,
   )
   dsh.start()
 }
@@ -224,10 +346,13 @@ if (!gotLock) {
   app.whenReady().then(() => {
     createWindow()
     createTray()
-    startDsh()
+    void startDsh()
 
     if (SMOKE) {
-      smokeTimer = setTimeout(() => finishSmoke(1, '60 秒内未获取到 dsh URL'), 60000)
+      smokeTimer = setTimeout(
+        () => finishSmoke(1, '10 分钟内未获取到 dsh URL'),
+        10 * 60 * 1000,
+      )
     }
   })
 

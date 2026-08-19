@@ -8,10 +8,10 @@ const child = spawn(electron, ['.'], {
 })
 
 const timer = setTimeout(() => {
-  console.error('[smoke] 90 秒超时，强制结束')
+  console.error('[smoke] 11 分钟超时，强制结束')
   child.kill()
   process.exit(2)
-}, 90000)
+}, 11 * 60 * 1000)
 
 child.on('exit', (code) => {
   clearTimeout(timer)

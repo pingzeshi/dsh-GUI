@@ -1,5 +1,7 @@
 import { spawn, execFile, ChildProcess } from 'child_process'
-import type { EmbeddedRuntimeSpec } from './embedded-runtime'
+import type { EmbeddedRuntimeSpec, EmbeddedWin32RuntimeSpec } from './embedded-runtime'
+import { provisionWin32Runtime } from './native-runtime'
+import type { Win32Runtime } from './native-runtime'
 
 export interface DshCallbacks {
   onUrl(url: string): void
@@ -9,6 +11,7 @@ export interface DshCallbacks {
 }
 
 interface WslRuntime {
+  kind: 'wsl'
   distro: string
   home: string
   nodePath: string
@@ -22,7 +25,18 @@ interface WslRuntime {
 interface ResolvedCommand {
   command: string
   args: string[]
-  runtime: WslRuntime
+  runtime: WslRuntime | Win32Runtime
+  env: NodeJS.ProcessEnv
+}
+
+export type DshRuntimeSelection =
+  | { mode: 'wsl'; embeddedRuntime: EmbeddedRuntimeSpec }
+  | { mode: 'win32'; embeddedRuntime: EmbeddedWin32RuntimeSpec }
+
+export interface WslAvailability {
+  available: boolean
+  distro: string
+  reason?: string
 }
 
 const DEFAULT_WSL_DISTRO = 'Ubuntu'
@@ -80,6 +94,36 @@ function execFileText(
     )
     onChild?.(child)
   })
+}
+
+/** 只做轻量探测，不部署运行时；用于决定是否需要征求 Windows 本机模式授权。 */
+export async function detectWslAvailability(
+  onChild?: (child: ChildProcess | null) => void,
+): Promise<WslAvailability> {
+  const distro = (process.env.DSH_WSL_DISTRO || DEFAULT_WSL_DISTRO).trim()
+  if (!distro || /[\r\n\0]/.test(distro)) {
+    return { available: false, distro, reason: 'DSH_WSL_DISTRO 无效' }
+  }
+  if (process.env.DSH_TEST_WSL_UNAVAILABLE === '1') {
+    return { available: false, distro, reason: '测试模式：模拟 WSL 不可用' }
+  }
+  try {
+    const output = await execFileText(
+      ['-d', distro, '--exec', '/bin/sh', '-c', "printf 'dsh-wsl-ready'"],
+      15000,
+      onChild,
+    )
+    if (output.trim() !== 'dsh-wsl-ready') {
+      return { available: false, distro, reason: 'WSL 探测返回了意外结果' }
+    }
+    return { available: true, distro }
+  } catch (err) {
+    return {
+      available: false,
+      distro,
+      reason: commandErrorMessage(err),
+    }
+  }
 }
 
 /**
@@ -304,7 +348,7 @@ test -d "$3"`
     )
   }
 
-  return { distro, home, nodePath, dshScriptPath, pathEnv, cwd, source, runtimeId }
+  return { kind: 'wsl', distro, home, nodePath, dshScriptPath, pathEnv, cwd, source, runtimeId }
 }
 
 export async function resolveDsh(
@@ -344,6 +388,27 @@ wait "$dsh_pid"`
       ...appArgs,
     ],
     runtime,
+    env: { ...process.env, FORCE_COLOR: '0' },
+  }
+}
+
+async function resolveWin32Dsh(
+  embeddedRuntime: EmbeddedWin32RuntimeSpec,
+  extraArgs: string[] = [],
+  onProbeChild?: (child: ChildProcess | null) => void,
+  onLog?: (message: string) => void,
+): Promise<ResolvedCommand> {
+  const runtime = await provisionWin32Runtime(embeddedRuntime, onProbeChild, onLog)
+  return {
+    command: runtime.nodePath,
+    args: [runtime.dshScriptPath, 'web', '--port', '0', ...extraArgs],
+    runtime,
+    env: {
+      ...process.env,
+      DSH_HOME: runtime.home,
+      PATH: runtime.pathEnv,
+      FORCE_COLOR: '0',
+    },
   }
 }
 
@@ -397,21 +462,20 @@ function runWslKill(runtime: WslRuntime, pid: number, signal: 'TERM' | 'KILL'): 
 }
 
 /**
- * dsh web lifecycle through WSL2:
- * provision/probe embedded runtime -> start isolated Linux process group -> parse URL ->
- * stop that group cleanly (Windows taskkill is only a final wrapper fallback).
+ * dsh web 生命周期：根据用户选择准备 WSL 或 Windows 内嵌运行时，解析动态 URL，
+ * 退出时只清理本桌面实例创建的进程树。
  */
 export class DshProcess {
   private child: ChildProcess | null = null
   private provisionChild: ChildProcess | null = null
-  private runtime: WslRuntime | null = null
+  private runtime: WslRuntime | Win32Runtime | null = null
   private linuxPid: number | null = null
   private stopped = false
   private urlSent = false
 
   constructor(
     private readonly callbacks: DshCallbacks,
-    private readonly embeddedRuntime: EmbeddedRuntimeSpec,
+    private readonly selection: DshRuntimeSelection,
   ) {}
 
   start(extraArgs: string[] = []): void {
@@ -421,33 +485,55 @@ export class DshProcess {
   private async prepareAndStart(extraArgs: string[]): Promise<void> {
     let resolved: ResolvedCommand
     try {
-      resolved = await resolveDsh(
-        this.embeddedRuntime,
-        extraArgs,
-        (child) => { this.provisionChild = child },
-      )
+      resolved = this.selection.mode === 'wsl'
+        ? await resolveDsh(
+          this.selection.embeddedRuntime,
+          extraArgs,
+          (child) => { this.provisionChild = child },
+        )
+        : await resolveWin32Dsh(
+          this.selection.embeddedRuntime,
+          extraArgs,
+          (child) => { this.provisionChild = child },
+          (message) => this.callbacks.onLog?.(message),
+        )
     } catch (err) {
       if (this.stopped) return
-      this.callbacks.onError(
-        `无法启动 WSL2 中的内嵌 dsh。\n${(err as Error).message}\n\n` +
-          '请确认 WSL2 与 Ubuntu 发行版可用。安装包已包含 Node.js 与 dsh，无需另行 npm install。\n\n' +
-          '可用 DSH_WSL_DISTRO 指定发行版；开发调试时可同时设置 ' +
-          'DSH_WSL_NODE / DSH_WSL_DSH_SCRIPT。',
-      )
+      if (this.selection.mode === 'wsl') {
+        this.callbacks.onError(
+          `无法启动 WSL2 中的内嵌 dsh。\n${(err as Error).message}\n\n` +
+            '请确认 WSL2 与 Ubuntu 发行版可用。安装包已包含 Node.js 与 dsh，无需另行 npm install。\n\n' +
+            '可用 DSH_WSL_DISTRO 指定发行版；开发调试时可同时设置 ' +
+            'DSH_WSL_NODE / DSH_WSL_DSH_SCRIPT。',
+        )
+      } else {
+        this.callbacks.onError(
+          `无法启动 Windows 本机内嵌 dsh。\n${(err as Error).message}\n\n` +
+            '该模式只部署桌面程序自带的 Node.js 与 dsh，不会安装全局 npm 包。' +
+            '可用 DSH_WIN_RUNTIME_ROOT / DSH_WIN_HOME / DSH_WIN_CWD 指定调试目录。',
+        )
+      }
       return
     }
     if (this.stopped) return
 
     this.runtime = resolved.runtime
-    this.callbacks.onLog?.(
-      `启动 WSL dsh (${resolved.runtime.distro}, ${resolved.runtime.source}:${resolved.runtime.runtimeId}): ` +
-        `${resolved.runtime.nodePath} ${resolved.runtime.dshScriptPath} web --port 0`,
-    )
+    if (resolved.runtime.kind === 'wsl') {
+      this.callbacks.onLog?.(
+        `启动 WSL dsh (${resolved.runtime.distro}, ${resolved.runtime.source}:${resolved.runtime.runtimeId}): ` +
+          `${resolved.runtime.nodePath} ${resolved.runtime.dshScriptPath} web --port 0`,
+      )
+    } else {
+      this.callbacks.onLog?.(
+        `启动 Windows 本机 dsh (${resolved.runtime.source}:${resolved.runtime.runtimeId}): ` +
+          `${resolved.runtime.nodePath} ${resolved.runtime.dshScriptPath} web --port 0`,
+      )
+    }
 
     const child = spawn(resolved.command, resolved.args, {
       windowsHide: true,
       shell: false,
-      env: { ...process.env, FORCE_COLOR: '0' },
+      env: resolved.env,
     })
     this.child = child
 
@@ -505,7 +591,7 @@ export class DshProcess {
     const child = this.child
     if (!child || hasExited(child)) return
 
-    if (this.runtime && this.linuxPid) {
+    if (this.runtime?.kind === 'wsl' && this.linuxPid) {
       await runWslKill(this.runtime, this.linuxPid, 'TERM')
       if (await waitForExit(child, 4000)) return
       await runWslKill(this.runtime, this.linuxPid, 'KILL')
