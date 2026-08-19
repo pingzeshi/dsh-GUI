@@ -2,6 +2,8 @@ import { app, BrowserWindow, Tray, Menu, shell, nativeImage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { DshProcess } from './dsh'
+import { embeddedRuntimeDirectory, loadEmbeddedRuntime } from './embedded-runtime'
+import type { EmbeddedRuntimeSpec } from './embedded-runtime'
 
 const SMOKE = !!process.env.DSH_SMOKE
 const DEV = process.argv.includes('--dev')
@@ -134,26 +136,46 @@ async function smokeBootCheck(url: string): Promise<void> {
 }
 
 function startDsh(): void {
-  dsh = new DshProcess({
-    onUrl: (url) => {
-      log(`DSH_URL: ${url}`)
-      if (SMOKE) {
-        void smokeBootCheck(url)
-        return
-      }
-      if (win && !win.isDestroyed()) {
-        win.loadURL(url).catch((err) => showError(`加载界面失败：${err.message}`))
-      }
+  let embeddedRuntime: EmbeddedRuntimeSpec
+  try {
+    const runtimeDirectory = embeddedRuntimeDirectory(
+      app.getAppPath(),
+      process.resourcesPath,
+      app.isPackaged,
+    )
+    embeddedRuntime = loadEmbeddedRuntime(runtimeDirectory)
+    log(
+      `内嵌运行时: ${embeddedRuntime.runtimeId}, ` +
+        `${embeddedRuntime.archiveSize} bytes, ${embeddedRuntime.archiveSha256}`,
+    )
+  } catch (err) {
+    showError(`内嵌运行时不可用：${(err as Error).message}`)
+    return
+  }
+
+  dsh = new DshProcess(
+    {
+      onUrl: (url) => {
+        log(`DSH_URL: ${url}`)
+        if (SMOKE) {
+          void smokeBootCheck(url)
+          return
+        }
+        if (win && !win.isDestroyed()) {
+          win.loadURL(url).catch((err) => showError(`加载界面失败：${err.message}`))
+        }
+      },
+      onExit: (code) => {
+        log(`dsh 退出，code=${code}`)
+        if (!quitting) {
+          showError(`dsh 进程已退出（code ${code}）。\n请退出应用后重新打开。`)
+        }
+      },
+      onError: (msg) => showError(msg),
+      onLog: DEV || SMOKE ? (line) => log(`dsh: ${line}`) : undefined,
     },
-    onExit: (code) => {
-      log(`dsh 退出，code=${code}`)
-      if (!quitting) {
-        showError(`dsh 进程已退出（code ${code}）。\n请退出应用后重新打开。`)
-      }
-    },
-    onError: (msg) => showError(msg),
-    onLog: DEV || SMOKE ? (line) => log(`dsh: ${line}`) : undefined,
-  })
+    embeddedRuntime,
+  )
   dsh.start()
 }
 
