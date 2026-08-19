@@ -1,8 +1,8 @@
 {
   "name": "dsh-desktop-embedded-runtime",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Pinned Linux production dependencies embedded by DSH Desktop",
+  "description": "DSH Desktop 跨平台内嵌运行时的固定生产依赖",
   "license": "MIT",
   "packageManager": "pnpm@11.22.0",
   "engines": {
