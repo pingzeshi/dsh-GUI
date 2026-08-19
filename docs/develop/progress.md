@@ -142,4 +142,7 @@
   两个本地插件目标均未变化。
 - [x] 版本升至 0.3.0；开发启动、smoke、NSIS/portable 打包均先准备运行时，
   electron-builder 通过 `extraResources` 携带归档、manifest 与第三方声明。
-- [ ] 构建 0.3.0 安装包并完成 portable/安装/卸载重装/UI 最终验收。
+- [x] 构建 0.3.0 NSIS/portable；完成 0.2.1 → 0.3.0 覆盖更新、真实卸载与
+  重装。安装/卸载/重装首次启动前三套数据树摘要完全一致；两次正式 UI 均恢复
+  工作区和迁移前历史正文，运行路径来自内嵌 dsh，退出后孤儿进程 0。完整记录见
+  `docs/migration/2026-08-20-embedded-runtime-validation.md`。

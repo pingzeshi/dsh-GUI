@@ -99,4 +99,6 @@ renderer/error.html              WSL、归档与启动错误引导页
 ```
 
 详细设计与验收不变量见
-[`docs/develop/embedded-runtime.md`](docs/develop/embedded-runtime.md)。
+[`docs/develop/embedded-runtime.md`](docs/develop/embedded-runtime.md)。0.3.0 的覆盖更新、
+真实卸载/重装与历史会话 UI 验收记录见
+[`docs/migration/2026-08-20-embedded-runtime-validation.md`](docs/migration/2026-08-20-embedded-runtime-validation.md)。
