@@ -81,8 +81,9 @@
       <strong>常见原因与处理：</strong>
       <ol class="steps">
         <li>WSL2/Ubuntu 不可用：先确认 <code>wsl -d Ubuntu</code> 能正常进入；</li>
-        <li>WSL 中未安装 Linux 原生 Node.js 或 dsh：在 Ubuntu 内执行 <code>npm install -g @deepseek-ai/dsh</code>；</li>
-        <li>使用自定义位置时，设置 <code>DSH_WSL_DISTRO</code>、<code>DSH_WSL_NODE</code> 或 <code>DSH_WSL_DSH_SCRIPT</code>；</li>
+        <li>内嵌运行时缺失或校验失败：重新安装完整的 DSH Desktop 安装包；</li>
+        <li>WSL 用户目录空间或权限不足：确保 HOME 可写且至少有 500 MB 可用空间；</li>
+        <li>使用外部调试运行时时，必须同时设置 <code>DSH_WSL_NODE</code> 与 <code>DSH_WSL_DSH_SCRIPT</code>；</li>
         <li>修复后，请退出本应用并重新打开。</li>
       </ol>
     </div>

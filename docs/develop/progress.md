@@ -122,3 +122,24 @@
 - [x] 0.2.1 编译、smoke、NSIS/portable 打包通过；覆盖安装 exit 0，安装文件版本 `0.2.1.0`。
 - [x] 覆盖安装前后 WSL `.dsh`、Windows `.dsh`、Electron userData 三套树摘要完全一致。
 - [x] 正式安装版再次验证分组与历史正文；退出后无 Windows/WSL 孤儿进程。
+
+## 会话 5：内嵌 dsh 运行时 + 桌面版 0.3.0
+
+- [x] 设计数据/程序分离方案：安装包只携带 Linux Node+dsh，`DSH_HOME` 继续使用
+  WSL 用户 `~/.dsh`，不打包会话、凭据、附件或插件配置。
+- [x] 固定 Node 24.15.0、pnpm 11.22.0 与 dsh 0.1.0-rc.7；生成并提交 Linux
+  pnpm lockfile，对 5 个安装脚本依赖使用显式 `allowBuilds` 白名单。
+- [x] 生成可重复的 `dsh-linux-x64.tar.gz`：91,971,661 字节，连续两次强制构建
+  SHA-256 均为 `0b8286b0e78757c511455a5cca35d5ce21723799806bedf63905ba856ce640db`。
+- [x] 构建产物验证：Node/dsh 版本正确、32,011 个文件可解压、断链 0、构建机
+  HOME/临时路径泄露 0；空 `DSH_HOME` Web 首启包含 `window.__DSH_BOOT__`。
+- [x] 桌面启动器异步校验并原子部署运行时到
+  `~/.local/share/dsh-desktop/runtimes/<runtime-id>`，更新使用版本化并排目录。
+- [x] 冷启动/缓存启动/错误 SHA/部署中断测试通过；中断后 provision 进程 0、
+  临时目录 0，正常退出后 dsh 孤儿进程 0。
+- [x] 现有数据验证：21 个会话与 512 个 profile 符号链接保持；67 个非依赖文件
+  中只有 `super-injector/self-heal.log` 正常追加，workspace、projection、设置及
+  两个本地插件目标均未变化。
+- [x] 版本升至 0.3.0；开发启动、smoke、NSIS/portable 打包均先准备运行时，
+  electron-builder 通过 `extraResources` 携带归档、manifest 与第三方声明。
+- [ ] 构建 0.3.0 安装包并完成 portable/安装/卸载重装/UI 最终验收。

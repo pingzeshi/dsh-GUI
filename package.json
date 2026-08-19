@@ -1,8 +1,8 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.2.1",
-  "description": "DeepSeek Harness 桌面 GUI 包装：Electron 壳 + WSL2 dsh web 官方界面",
+  "version": "0.3.0",
+  "description": "DeepSeek Harness 桌面 GUI：Electron + WSL2 + 内嵌 dsh 运行时",
   "author": "DSH Desktop",
   "private": true,
   "main": "dist/main/main.js",
@@ -11,11 +11,11 @@
     "runtime:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1",
     "runtime:rebuild": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -Force",
     "runtime:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -VerifyOnly",
-    "start": "npm run build && electron .",
-    "start:dev": "npm run build && electron . --dev",
-    "smoke": "npm run build && node scripts/smoke.js",
-    "dist": "npm run build && electron-builder --win",
-    "dist:portable": "npm run build && electron-builder --win portable"
+    "start": "npm run runtime:build && npm run build && electron .",
+    "start:dev": "npm run runtime:build && npm run build && electron . --dev",
+    "smoke": "npm run runtime:build && npm run build && node scripts/smoke.js",
+    "dist": "npm run runtime:build && npm run build && electron-builder --win",
+    "dist:portable": "npm run runtime:build && npm run build && electron-builder --win portable"
   },
   "license": "MIT",
   "devDependencies": {

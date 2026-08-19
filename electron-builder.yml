@@ -11,6 +11,13 @@ files:
 asar: true
 asarUnpack:
   - assets/**
+extraResources:
+  - from: runtime
+    to: runtime
+    filter:
+      - manifest.json
+      - dsh-linux-x64.tar.gz
+      - THIRD_PARTY_NOTICES.md
 win:
   target:
     - nsis

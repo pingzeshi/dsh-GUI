@@ -31,10 +31,11 @@ dsh；首次打开时，桌面程序把只读运行时原子部署到所选 WSL2
 
 - Node.js `24.15.0` Linux x64；官方归档 SHA-256：
   `472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6`；
+- pnpm `11.22.0`（仅构建阶段使用，按 lockfile 安装并显式审核 build scripts）；
 - `@deepseek-ai/dsh` `0.1.0-rc.7`；
 - 平台/架构：`linux-x64`。
 
-构建脚本在 WSL 文件系统内完成干净安装，验证 Node 与 dsh 版本后，生成可重复
+构建脚本在 WSL 文件系统内用 pnpm 完成干净安装，验证 Node 与 dsh 版本后，生成可重复
 压缩的 `runtime/dsh-linux-x64.tar.gz` 以及带归档哈希的
 `runtime/manifest.json`。大型归档是派生构建物，不提交 Git；打包命令会先校验
 或生成它。NSIS 与 portable 制品都通过 electron-builder `extraResources`
@@ -45,7 +46,8 @@ dsh；首次打开时，桌面程序把只读运行时原子部署到所选 WSL2
 
 ## 首次启动流程
 
-1. Electron 读取并校验随包 manifest，解析当前安装形态下的归档路径。
+1. Electron 读取并校验随包 manifest，解析当前安装形态下的归档路径；部署在
+   后台异步执行，启动窗口不会因首次解压而阻塞。
 2. 通过 `wsl.exe` 把 Windows 归档路径转换为 WSL 路径。
 3. 若目标 runtime-id 已有与归档 SHA 匹配的 ready 标记，直接复用。
 4. 否则先校验归档 SHA-256，再解压到同一父目录的临时目录；验证 Node、dsh
@@ -73,4 +75,3 @@ dsh；首次打开时，桌面程序把只读运行时原子部署到所选 WSL2
 - NSIS 安装版与 portable 均能完成上述启动；退出后没有 Electron、wsl.exe 或
   dsh 孤儿进程。
 - 覆盖安装与卸载/重装前后，`~/.dsh` 的排除依赖目录摘要保持一致。
-
