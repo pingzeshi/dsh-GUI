@@ -125,3 +125,28 @@ profile 符号链接仍为 512 个，链接清单 SHA-256 为
 
 结论：桌面应用文件、WSL 运行时缓存和 `DSH_HOME=~/.dsh` 已正确分离。覆盖更新、
 卸载和重装不会删除或重分类现有会话，也不会覆盖插件、profile、设置或凭据。
+
+## 中文协作规范更新后的本机复验
+
+在仓库新增中文提交与文档约定、重新生成制品后，再次直接覆盖安装当前 HEAD：
+
+- 官方 npm 标签核对结果：`latest=0.1.0-rc.7`、`next=0.1.0-rc.8`，因此继续
+  内嵌正式 `latest`，没有误用预发布 `next`。
+- `npm run dist` 完成，安装包 SHA-256 为
+  `4A67628522DA3AF1025B5B991E4AC620CF903818AFBD3E07179965CAF44B289C`。
+- 覆盖安装 exit 0；安装路径仍为 `D:\deepseekGUI\DSH Desktop`，文件版本与
+  产品版本分别为 `0.3.0`、`0.3.0.0`。
+- 覆盖安装首次启动前，三棵数据树与安装前摘要完全一致：
+
+| 数据树 | 文件数 | 字节 | 聚合 SHA-256 |
+|---|---:|---:|---|
+| WSL `.dsh` | 67 | 14,856,201 | `EBFBE26A35011D05603C7366D67D813FC3688B22EBED43F654C9B5E1AEDE0D35` |
+| Windows `.dsh` | 67 | 14,880,141 | `F8D78C46732FE993C4404A19278E4B7A5CEB3D07041F43281371D13D11680EEC` |
+| Electron userData | 2,325 | 143,354,265 | `F68EDE17813A31DB5D16398450215B3B3819EAB4A63F2FEC72141CFBB5FA511B` |
+
+- 已安装版 smoke exit 0，Windows 与 WSL dsh 残留进程均为 0。
+- 正式 UI 显示 `pluginConfigure`、`Everything`、`quickStart`、`未分组`；再次
+  打开 `美化DeepSeek Harness界面方案`，历史正文和 `3 轮 · 143 步`统计正常。
+- 运行时 ready 标记、512 个 profile 链接及两个本地插件目标均未变化；相对
+  原始备份仍只有 `super-injector/self-heal.log` 正常追加，其余 66 个核心文件
+  逐文件一致。
