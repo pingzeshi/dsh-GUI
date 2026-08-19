@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "dsh-0.1.0-rc.7-node-24.15.0-win32-x64",
+  "platform": "win32",
+  "arch": "x64",
+  "nodeVersion": "24.15.0",
+  "nodeArchiveSha256": "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62",
+  "pnpmVersion": "11.22.0",
+  "dshVersion": "0.1.0-rc.7",
+  "archiveName": "dsh-win32-x64.tar.gz",
+  "manifestName": "manifest-win32-x64.json"
+}

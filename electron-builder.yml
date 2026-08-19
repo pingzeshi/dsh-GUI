@@ -16,7 +16,9 @@ extraResources:
     to: runtime
     filter:
       - manifest.json
+      - manifest-win32-x64.json
       - dsh-linux-x64.tar.gz
+      - dsh-win32-x64.tar.gz
       - THIRD_PARTY_NOTICES.md
 win:
   target:

@@ -8,9 +8,11 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "runtime:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1",
-    "runtime:rebuild": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -Force",
-    "runtime:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -VerifyOnly",
+    "runtime:build:linux": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1",
+    "runtime:build:win32": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime-win32.ps1",
+    "runtime:build": "npm run runtime:build:linux && npm run runtime:build:win32",
+    "runtime:rebuild": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -Force && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime-win32.ps1 -Force",
+    "runtime:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1 -VerifyOnly && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime-win32.ps1 -VerifyOnly",
     "start": "npm run runtime:build && npm run build && electron .",
     "start:dev": "npm run runtime:build && npm run build && electron . --dev",
     "smoke": "npm run runtime:build && npm run build && node scripts/smoke.js",
@@ -18,6 +20,9 @@
     "dist:portable": "npm run runtime:build && npm run build && electron-builder --win portable"
   },
   "license": "MIT",
+  "dependencies": {
+    "tar": "7.5.22"
+  },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "electron": "^43.4.0",
