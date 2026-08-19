@@ -67,6 +67,10 @@ npm run start:dev        # 同上，额外输出 dsh 日志
 npm run smoke            # 加载真实 Web UI，验证 window.__DSH_BOOT__ 后退出
 ```
 
+仓库提交说明和项目文档统一使用中文；第三方许可证、命令、代码与专有名词除外。
+每个可独立验收的任务应单独提交。完整协作约定见
+[`AGENTS.md`](AGENTS.md)。
+
 运行时版本固定在 `runtime/runtime-config.json`，Linux 依赖固定在
 `runtime/pnpm-lock.yaml`。生成的 `runtime/dsh-linux-x64.tar.gz` 约 92 MB，属于
 派生构建物并被 Git 忽略；manifest 会提交，以便审计版本、大小和哈希。
