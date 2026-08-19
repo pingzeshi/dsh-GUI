@@ -146,3 +146,24 @@
   重装。安装/卸载/重装首次启动前三套数据树摘要完全一致；两次正式 UI 均恢复
   工作区和迁移前历史正文，运行路径来自内嵌 dsh，退出后孤儿进程 0。完整记录见
   `docs/migration/2026-08-20-embedded-runtime-validation.md`。
+
+## 会话 6：无 WSL 双选回退 + 桌面版 0.4.0
+
+- [x] 新增可重复的 Windows x64 内嵌运行时构建器，固定 Node 24.15.0、pnpm
+  11.22.0 与 `@deepseek-ai/dsh@0.1.0-rc.7`；连续两次打包 SHA-256 一致。
+- [x] 安装包同时携带 Linux/Windows manifest 与归档，目标机无需预装 Node、npm、
+  pnpm 或全局 dsh。
+- [x] 自动模式轻量探测 WSL；无可用 WSL 且无既有授权时，只显示“使用 Windows
+  本机模式”和“暂不配置并退出”两个选择，关闭对话框等同退出。
+- [x] 选择退出不写偏好、不部署 Windows 运行时、不创建 `.dsh`；选择本机模式后
+  才保存授权。后来恢复 WSL 时自动模式仍优先使用 WSL。
+- [x] Windows 运行时实现归档路径安全校验、独立解压子进程、部署锁、过期锁与
+  中断临时目录回收、ready 指纹及原子改名；首次部署、缓存复用和中断恢复通过。
+- [x] 开发版、`win-unpacked`、portable 与正式安装版的 WSL/Windows 冒烟测试
+  全部通过，退出后相关进程与运行时临时片段均为 0。
+- [x] 完成 0.3.0 → 0.4.0 直接覆盖安装；首次启动前三套数据树摘要完全一致。
+- [x] 正式 UI 仍显示 `pluginConfigure`、`Everything`、`quickStart`、`未分组`；
+  `美化DeepSeek Harness界面方案` 历史正文与 `3 轮 · 143 步` 正常载入。
+- [x] 明确记录 WSL `~/.dsh` 与 Windows `%USERPROFILE%\.dsh` 相互独立，不进行
+  隐式会话或插件迁移。完整记录见
+  `docs/migration/2026-08-20-no-wsl-fallback-validation.md`。
