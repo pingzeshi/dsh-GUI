@@ -1,0 +1,17 @@
+﻿
+> dsh-desktop@0.1.0 smoke
+> npm run build && node scripts/smoke.js
+
+
+> dsh-desktop@0.1.0 build
+> tsc -p tsconfig.json
+
+
+node.exe : [21992:0814/064402.287:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with:
+ 10108
+At line:1 char:1
++ & "D:\nodejs/node.exe" "D:\nodejs/node_modules/npm/bin/npm-cli.js" ru ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([21992:0814/064...led with: 10108:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

@@ -1,0 +1,26 @@
+appId: dev.dsh.desktop
+productName: DSH Desktop
+directories:
+  output: release
+  buildResources: assets
+files:
+  - dist/**
+  - renderer/**
+  - assets/**
+  - package.json
+asar: true
+asarUnpack:
+  - assets/**
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DSH Desktop
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
