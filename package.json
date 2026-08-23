@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "DeepSeek Harness 桌面 GUI：Electron + WSL2/Windows 本机内嵌 dsh 运行时",
   "author": "DSH Desktop",
   "private": true,
