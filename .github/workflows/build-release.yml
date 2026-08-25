@@ -1,0 +1,208 @@
+name: 构建 Release
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-runtime:
+    name: 构建 Linux 内嵌运行时
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 签出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+
+      - name: 构建并验证 Linux 运行时
+        shell: bash
+        run: |
+          runtime_id="$(node -p "require('./runtime/runtime-config.json').runtimeId")"
+          node_version="$(node -p "require('./runtime/runtime-config.json').nodeVersion")"
+          node_sha256="$(node -p "require('./runtime/runtime-config.json').nodeArchiveSha256")"
+          pnpm_version="$(node -p "require('./runtime/runtime-config.json').pnpmVersion")"
+          dsh_version="$(node -p "require('./runtime/runtime-config.json').dshVersion")"
+          archive_name="$(node -p "require('./runtime/runtime-config.json').archiveName")"
+
+          bash scripts/build-embedded-runtime.sh \
+            "$GITHUB_WORKSPACE" \
+            "$runtime_id" \
+            "$node_version" \
+            "$node_sha256" \
+            "$pnpm_version" \
+            "$dsh_version" \
+            "$archive_name"
+
+          git diff --exit-code -- runtime/manifest.json
+
+      - name: 上传 Linux 运行时
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-linux-x64
+          path: |
+            runtime/dsh-linux-x64.tar.gz
+            runtime/manifest.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  build-windows-runtime:
+    name: 构建 Windows 内嵌运行时
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 签出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 构建并验证 Windows 运行时
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass `
+            -File scripts/build-embedded-runtime-win32.ps1 -Force
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows 运行时构建失败，退出码：$LASTEXITCODE"
+          }
+          git diff --exit-code -- runtime/manifest-win32-x64.json
+
+      - name: 上传 Windows 运行时
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-win32-x64
+          path: |
+            runtime/dsh-win32-x64.tar.gz
+            runtime/manifest-win32-x64.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  package-release:
+    name: 构建 Windows Release
+    needs:
+      - build-linux-runtime
+      - build-windows-runtime
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 签出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.15.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: 下载 Linux 运行时
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-linux-x64
+          path: runtime
+
+      - name: 下载 Windows 运行时
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-win32-x64
+          path: runtime
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 执行测试
+        run: npm test
+
+      - name: 验证运行时
+        run: npm run runtime:verify
+
+      - name: 打包安装版与便携版
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm exec electron-builder -- --win --publish never
+
+      - name: 验证 Release 并生成校验信息
+        id: release-info
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = [string]((Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version)
+          $expectedReleaseFiles = @(
+            "release/DSH Desktop Setup $version.exe"
+            "release/DSH Desktop-$version-portable.exe"
+          )
+
+          $actualReleaseFiles = @(Get-ChildItem -LiteralPath release -File -Filter '*.exe')
+          if ($actualReleaseFiles.Count -ne $expectedReleaseFiles.Count) {
+            throw "Release 中应有 $($expectedReleaseFiles.Count) 个 exe，实际为 $($actualReleaseFiles.Count) 个。"
+          }
+          foreach ($releaseFile in $expectedReleaseFiles) {
+            if (!(Test-Path -LiteralPath $releaseFile -PathType Leaf)) {
+              throw "缺少 Release 文件：$releaseFile"
+            }
+          }
+
+          foreach ($archiveName in @('dsh-linux-x64.tar.gz', 'dsh-win32-x64.tar.gz')) {
+            $sourceArchive = Join-Path runtime $archiveName
+            $bundledArchive = Join-Path 'release/win-unpacked/resources/runtime' $archiveName
+            if (!(Test-Path -LiteralPath $bundledArchive -PathType Leaf)) {
+              throw "打包结果缺少内嵌运行时：$bundledArchive"
+            }
+            $sourceHash = (Get-FileHash -LiteralPath $sourceArchive -Algorithm SHA256).Hash
+            $bundledHash = (Get-FileHash -LiteralPath $bundledArchive -Algorithm SHA256).Hash
+            if ($sourceHash -cne $bundledHash) {
+              throw "内嵌运行时哈希不一致：$archiveName"
+            }
+          }
+
+          $checksumLines = $actualReleaseFiles |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            }
+          $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $PWD 'release/SHA256SUMS.txt'),
+            [string[]]$checksumLines,
+            $utf8NoBom
+          )
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $PWD 'release/BUILD-INFO.txt'),
+            [string[]]@(
+              "version=$version"
+              "commit=$env:GITHUB_SHA"
+              "ref=$env:GITHUB_REF"
+              "run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            ),
+            $utf8NoBom
+          )
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: 上传 Release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: DSH-Desktop-${{ steps.release-info.outputs.version }}-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+            release/BUILD-INFO.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

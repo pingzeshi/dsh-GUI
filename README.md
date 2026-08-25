@@ -127,6 +127,21 @@ npm run dist:portable    # 仅 portable
 - 卸载程序只移除 Windows 应用文件，故意保留 WSL/Windows `.dsh`、已部署运行时
   和 Electron 用户状态。
 
+## GitHub 自动构建
+
+`.github/workflows/build-release.yml` 会在任意分支每次推送提交后自动执行，也可以在
+GitHub Actions 页面手动触发。流水线会分别在 Linux 和 Windows runner 上重建两份
+内嵌运行时，再在 Windows runner 上执行测试、运行时校验和正式打包。
+
+构建成功后，在对应的 Actions 运行记录底部下载
+`DSH-Desktop-<版本>-<提交 SHA>` 制品。制品包含 NSIS 安装版、便携版、
+`SHA256SUMS.txt` 和 `BUILD-INFO.txt`，保留 7 天。两份仅用于 job 间传递的运行时
+制品保留 1 天，以减少 Actions 存储占用。
+
+这里的 Release 指 `electron-builder` 生成的正式模式制品；工作流不会为每个提交创建
+Git 标签或 GitHub Release，避免污染正式发布历史。只有推送到 GitHub 的提交才会触发
+自动构建，本地提交可在推送前通过 `npm test` 和 `npm run runtime:verify` 检查。
+
 ## 目录结构
 
 ```text
