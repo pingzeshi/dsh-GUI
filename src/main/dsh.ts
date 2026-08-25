@@ -43,6 +43,19 @@ export interface WslAvailability {
 const DEFAULT_WSL_DISTRO = 'Ubuntu'
 const DEFAULT_WSL_CWD = '/mnt/d/DeepSeekHarness'
 const LINUX_PID_PREFIX = '__DSH_LINUX_PID__='
+const NODE_USE_ENV_PROXY_VALUE = '1'
+
+/**
+ * Node 24 的内置 fetch 默认不会读取 HTTP_PROXY / HTTPS_PROXY。
+ * 桌面端统一开启环境代理支持，使 WSL autoProxy、企业代理和显式代理变量真正生效。
+ */
+export function nodeProxyAssignment(): string {
+  return `NODE_USE_ENV_PROXY=${NODE_USE_ENV_PROXY_VALUE}`
+}
+
+export function withNodeEnvironmentProxy(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, NODE_USE_ENV_PROXY: NODE_USE_ENV_PROXY_VALUE }
+}
 
 function assertLinuxPath(name: string, value: string): string {
   const clean = value.trim()
@@ -384,12 +397,13 @@ wait "$dsh_pid"`
       '/usr/bin/env',
       `DSH_HOME=${runtime.home}/.dsh`,
       `PATH=${runtime.pathEnv}`,
+      nodeProxyAssignment(),
       runtime.nodePath,
       runtime.dshScriptPath,
       ...appArgs,
     ],
     runtime,
-    env: { ...process.env, FORCE_COLOR: '0' },
+    env: withNodeEnvironmentProxy({ ...process.env, FORCE_COLOR: '0' }),
   }
 }
 
@@ -404,12 +418,12 @@ async function resolveWin32Dsh(
     command: runtime.nodePath,
     args: [runtime.dshScriptPath, 'web', '--port', '0', ...extraArgs],
     runtime,
-    env: {
+    env: withNodeEnvironmentProxy({
       ...process.env,
       DSH_HOME: runtime.home,
       PATH: runtime.pathEnv,
       FORCE_COLOR: '0',
-    },
+    }),
   }
 }
 

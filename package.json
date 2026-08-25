@@ -1,12 +1,14 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "DeepSeek Harness 桌面 GUI：Electron + WSL2/Windows 本机内嵌 dsh 运行时",
   "author": "DSH Desktop",
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
+    "test": "npm run test:proxy-env",
+    "test:proxy-env": "npm run build && node scripts/test-proxy-env.js",
     "build": "tsc -p tsconfig.json",
     "runtime:build:linux": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime.ps1",
     "runtime:build:win32": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-embedded-runtime-win32.ps1",

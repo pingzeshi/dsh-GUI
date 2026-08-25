@@ -203,3 +203,21 @@
   完全一致。Application Error 与 Crashpad 新报告均为 0，单实例通过。
 - [x] 完整证据见
   `docs/migration/2026-08-23-v0.4.1-install-debug-validation.md`。
+
+## 会话 9：修复 WSL 环境代理 + 桌面版 0.4.2
+
+- [x] 复现 WSL 中内嵌 Node 24 的全局 `fetch()` 在代理变量存在时仍直连，约
+  10.7 秒后以 `UND_ERR_CONNECT_TIMEOUT` 失败；加
+  `NODE_USE_ENV_PROXY=1` 后快速得到 DeepSeek API HTTP 响应。
+- [x] 确认 dsh DeepSeek provider 直接调用全局 `fetch()`，错误路径与用户看到的
+  `DeepSeek API request ... failed` 完全一致。
+- [x] WSL `/usr/bin/env`、`wsl.exe` 包装环境及 Windows 本机启动环境统一启用
+  Node 环境代理，保留 `HTTP_PROXY`、`HTTPS_PROXY` 与 `NO_PROXY`。
+- [x] 新增 `npm test` 代理启动参数回归，`PROXY_ENV_TEST_OK`；0.4.2 构建、
+  WSL smoke 和 NSIS/portable 打包通过。
+- [x] 完成 0.4.1 → 0.4.2 原目录覆盖安装；首次启动前三套数据树逐文件聚合摘要
+  完全一致，已安装主程序及 `app.asar` 与构建产物一致。
+- [x] 正式 dsh 进程确认 `NODE_USE_ENV_PROXY=1`，同环境连通探针 122ms 返回
+  HTTP 401；原失败会话“你好”及其 18:59 记录正常保留。
+- [x] 完整证据见
+  `docs/migration/2026-08-25-wsl-proxy-validation.md`。

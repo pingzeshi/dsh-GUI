@@ -56,6 +56,18 @@ WSL 与 Windows 本机模式使用彼此独立的数据和运行时目录：
 
 首次部署期间显示启动页。后续启动通过 ready 指纹直接复用已校验运行时。
 
+## 代理网络（v0.4.2）
+
+Node.js 24 的内置 `fetch()` 默认不会因为环境中存在 `HTTP_PROXY`、
+`HTTPS_PROXY` 就自动使用代理。DSH Desktop 0.4.2 起，在 WSL 和 Windows 本机
+两条 dsh 启动链中统一设置 `NODE_USE_ENV_PROXY=1`，同时原样保留已有的大小写
+代理变量和 `NO_PROXY`。
+
+这使 WSL 的 `autoProxy=true`、企业代理或用户显式配置的代理变量能被 dsh 的
+DeepSeek API 请求实际使用。桌面端不会记录代理凭据，也不会自行改写代理地址。
+如果 WSL 使用 NAT 网络且 Windows 代理只监听 `127.0.0.1`，仍应改用 mirrored
+网络，或让代理监听 WSL 可访问的地址。
+
 ## 环境变量
 
 | 变量 | 用途 |
@@ -81,6 +93,7 @@ WSL 默认工作目录为 `/mnt/d/DeepSeekHarness`，不存在时回退到 WSL H
 
 ```powershell
 npm install
+npm test                 # 编译并验证 Node 环境代理启动参数
 npm run runtime:build    # 校验或生成 Linux + Windows 两个运行时归档
 npm run runtime:verify   # 校验两个 manifest、大小与 SHA-256
 npm run runtime:rebuild  # 强制干净重建，用于版本发布
@@ -135,3 +148,5 @@ renderer/error.html                      运行时与启动错误引导页
 [`docs/migration/2026-08-20-no-wsl-fallback-validation.md`](docs/migration/2026-08-20-no-wsl-fallback-validation.md)；
 0.3.0 的真实卸载/重装记录见
 [`docs/migration/2026-08-20-embedded-runtime-validation.md`](docs/migration/2026-08-20-embedded-runtime-validation.md)。
+0.4.2 的 WSL/Clash 代理故障复现、修复和本机覆盖安装记录见
+[`docs/migration/2026-08-25-wsl-proxy-validation.md`](docs/migration/2026-08-25-wsl-proxy-validation.md)。

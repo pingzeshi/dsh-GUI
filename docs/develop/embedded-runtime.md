@@ -86,6 +86,18 @@ dsh 做版本复验。
 6. 退出通过已跟踪 PID 的 `taskkill /T /F` 清理本实例进程树；部署子进程也纳入同一
    生命周期。
 
+## Node 出站代理
+
+dsh 的 DeepSeek provider 直接使用 Node 24 全局 `fetch()` 请求
+`https://api.deepseek.com/chat/completions`。Node 默认不会仅凭
+`HTTP_PROXY` / `HTTPS_PROXY` 自动为 `fetch()` 启用环境代理，因此 WSL 即使已由
+`autoProxy` 注入代理变量，模型请求仍可能绕过代理并连接超时。
+
+桌面端在 WSL `/usr/bin/env` 参数、`wsl.exe` 包装进程环境和 Windows 本机 Node
+环境中统一设置 `NODE_USE_ENV_PROXY=1`。已有的 `HTTP_PROXY`、`HTTPS_PROXY`、
+小写变体和 `NO_PROXY` 均原样继承；没有代理变量时，此开关不会虚构代理服务器。
+本地 Web UI 和回环地址继续由 `NO_PROXY` 排除。
+
 ready 指纹格式统一为：
 
 ```text
@@ -131,3 +143,5 @@ NSIS 与 portable 都只携带只读归档。应用升级会携带新的 runtime
 - 覆盖安装和卸载/重装前后，WSL `.dsh`、Windows `.dsh` 与 Electron 用户状态的
   排除运行日志摘要保持一致；
 - 正式 UI 中既有工作区分类、历史会话正文、profile 与本地插件仍能读取。
+- 存在环境代理时，正式 dsh 进程必须含 `NODE_USE_ENV_PROXY=1`，同一内嵌 Node
+  对 DeepSeek API 的无鉴权连通探针应快速得到 HTTP 响应，而不是连接超时。
