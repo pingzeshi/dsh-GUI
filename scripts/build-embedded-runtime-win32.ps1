@@ -27,18 +27,16 @@ function Copy-TextFileLf([string]$Source, [string]$Destination) {
 }
 
 function Remove-CmdShimTargetComments([string]$NodeModulesDirectory) {
-  $binDirectory = Join-Path $NodeModulesDirectory '.bin'
-  if (!(Test-Path -LiteralPath $binDirectory -PathType Container)) {
-    return 0
-  }
-
   $removed = 0
-  foreach ($shim in Get-ChildItem -LiteralPath $binDirectory -File) {
-    $value = [System.IO.File]::ReadAllText($shim.FullName)
-    $normalized = [regex]::Replace($value, '(?m)^# cmd-shim-target=.*(?:\r?\n|\z)', '')
-    if ($normalized -cne $value) {
-      Write-Utf8NoBom $shim.FullName $normalized
-      $removed += 1
+  $binDirectories = @(Get-ChildItem -LiteralPath $NodeModulesDirectory -Directory -Recurse -Force -Filter '.bin')
+  foreach ($binDirectory in $binDirectories) {
+    foreach ($shim in Get-ChildItem -LiteralPath $binDirectory.FullName -File -Force) {
+      $value = [System.IO.File]::ReadAllText($shim.FullName)
+      $normalized = [regex]::Replace($value, '(?m)^# cmd-shim-target=.*(?:\r?\n|\z)', '')
+      if ($normalized -cne $value) {
+        Write-Utf8NoBom $shim.FullName $normalized
+        $removed += 1
+      }
     }
   }
   return $removed
@@ -159,6 +157,7 @@ try {
   $nodeZip = Join-Path $workDir 'node.zip'
   $nodeExtract = Join-Path $workDir 'node-dist'
   $appDir = Join-Path $workDir 'app'
+  $pnpmStore = Join-Path $workDir 'pnpm-store'
   $stageDir = Join-Path $workDir 'stage'
   $verifyDir = Join-Path $workDir 'verify'
   New-Item -ItemType Directory -Path $nodeExtract, $appDir, $stageDir, $verifyDir | Out-Null
@@ -195,7 +194,8 @@ try {
       $installExitCode = 1
       for ($attempt = 1; $attempt -le 3; $attempt++) {
         & $corepackCmd "pnpm@$($config.pnpmVersion)" install --prod --frozen-lockfile `
-          --ignore-scripts=false --reporter=append-only --config.node-linker=hoisted
+          --ignore-scripts=false --reporter=append-only --config.node-linker=hoisted `
+          --store-dir $pnpmStore
         $installExitCode = $LASTEXITCODE
         if ($installExitCode -eq 0) {
           $installSucceeded = $true

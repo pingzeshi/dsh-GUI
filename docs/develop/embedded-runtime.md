@@ -38,12 +38,14 @@ DSH Desktop 0.4.0 的安装包同时携带 Linux x64 与 Windows x64 的 Node.js
 | pnpm（仅构建） | `11.22.0` | `11.22.0` |
 | `@deepseek-ai/dsh` | `0.1.0-rc.7` | `0.1.0-rc.7` |
 | 归档 | `dsh-linux-x64.tar.gz` | `dsh-win32-x64.tar.gz` |
-| 归档 SHA-256 | `0b8286b0e78757c511455a5cca35d5ce21723799806bedf63905ba856ce640db` | `d71299c265d1740bbb2823acd77fbe52232e738fcb73a0b3505c9946be6b4505` |
+| 归档 SHA-256 | `0b8286b0e78757c511455a5cca35d5ce21723799806bedf63905ba856ce640db` | `ac02d46abff8fd52ce180a7f12b38b54e0a4248e6212b658aa700ba672abf0de` |
 
 Linux 构建在 WSL 文件系统中执行。Windows 构建使用 pnpm 的 hoisted node linker，
-生成不含符号链接或目录联接的依赖树；归档时不依赖 Windows 上不稳定的 inode/nlink
-值，而是写入完整文件。归档条目排序、文本换行、时间戳与 gzip 时间均固定，因此
-相同输入得到相同字节。两个构建都会从归档重新启动 Node 与 dsh 做版本复验。
+并在隔离的临时 store 中重新执行依赖安装，避免历史 side-effects 缓存改变产物；生成
+不含符号链接或目录联接的依赖树。构建会递归清理 pnpm 各级 `.bin` shell shim 中的
+临时目标路径；归档时不依赖 Windows 上不稳定的 inode/nlink 值，而是写入完整文件。
+归档条目排序、文本换行、时间戳与 gzip 时间均固定，因此相同输入得到相同字节。两个
+构建都会从归档重新启动 Node 与 dsh 做版本复验。
 
 大型归档是 Git 忽略的派生构建物。electron-builder 通过 `extraResources` 把两个
 归档、两个 manifest 与第三方声明复制到安装包资源目录。
