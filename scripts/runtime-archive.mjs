@@ -5,6 +5,17 @@ import { create, extract, list } from 'tar'
 
 const FIXED_MTIME = new Date('2020-01-01T00:00:00.000Z')
 
+// Windows 的 inode/nlink 值不足以可靠识别硬链接；禁用 tar 的链接缓存，避免把不同文件错链。
+class NoHardlinkCache extends Map {
+  get() {
+    return undefined
+  }
+
+  set() {
+    return this
+  }
+}
+
 function fail(message) {
   console.error(message)
   process.exit(2)
@@ -52,6 +63,10 @@ async function validateArchive(archivePath) {
         entry.resume()
         throw new Error(`归档中出现不安全路径：${entry.path}`)
       }
+      if (!['File', 'Directory'].includes(entry.type)) {
+        entry.resume()
+        throw new Error(`归档中出现不支持的条目类型：${entry.type} (${entry.path})`)
+      }
       entry.resume()
     },
   })
@@ -73,6 +88,7 @@ async function createArchive(sourceDirectory, archivePath) {
       portable: true,
       strict: true,
       sync: true,
+      linkCache: new NoHardlinkCache(),
     },
     archiveEntries,
   )

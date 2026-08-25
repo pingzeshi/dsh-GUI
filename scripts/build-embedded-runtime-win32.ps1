@@ -20,6 +20,30 @@ function Write-Utf8NoBom([string]$Path, [string]$Value) {
   [System.IO.File]::WriteAllText($Path, $Value, $encoding)
 }
 
+function Copy-TextFileLf([string]$Source, [string]$Destination) {
+  $value = [System.IO.File]::ReadAllText($Source)
+  $normalized = $value.Replace("`r`n", "`n").Replace("`r", "`n")
+  Write-Utf8NoBom $Destination $normalized
+}
+
+function Remove-CmdShimTargetComments([string]$NodeModulesDirectory) {
+  $binDirectory = Join-Path $NodeModulesDirectory '.bin'
+  if (!(Test-Path -LiteralPath $binDirectory -PathType Container)) {
+    return 0
+  }
+
+  $removed = 0
+  foreach ($shim in Get-ChildItem -LiteralPath $binDirectory -File) {
+    $value = [System.IO.File]::ReadAllText($shim.FullName)
+    $normalized = [regex]::Replace($value, '(?m)^# cmd-shim-target=.*(?:\r?\n|\z)', '')
+    if ($normalized -cne $value) {
+      Write-Utf8NoBom $shim.FullName $normalized
+      $removed += 1
+    }
+  }
+  return $removed
+}
+
 function Assert-SafeToken([string]$Name, [string]$Value, [string]$Pattern) {
   if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch $Pattern) {
     throw "$Name contains an unsupported value: $Value"
@@ -158,17 +182,32 @@ try {
     throw 'Downloaded Node.js version does not match configuration.'
   }
 
-  Copy-Item -LiteralPath $packageJson, $pnpmLock, $pnpmWorkspace -Destination $appDir
+  Copy-TextFileLf $packageJson (Join-Path $appDir 'package.json')
+  Copy-TextFileLf $pnpmLock (Join-Path $appDir 'pnpm-lock.yaml')
+  Copy-TextFileLf $pnpmWorkspace (Join-Path $appDir 'pnpm-workspace.yaml')
   $savedCorepackHome = $env:COREPACK_HOME
   $env:COREPACK_HOME = Join-Path $workDir 'corepack'
   try {
     Push-Location $appDir
     try {
       Write-Host "Installing Windows native dsh $($config.dshVersion) from the lockfile"
-      & $corepackCmd "pnpm@$($config.pnpmVersion)" install --prod --frozen-lockfile `
-        --ignore-scripts=false --reporter=append-only --config.node-linker=hoisted
-      if ($LASTEXITCODE -ne 0) {
-        throw "pnpm install failed with exit code $LASTEXITCODE."
+      $installSucceeded = $false
+      $installExitCode = 1
+      for ($attempt = 1; $attempt -le 3; $attempt++) {
+        & $corepackCmd "pnpm@$($config.pnpmVersion)" install --prod --frozen-lockfile `
+          --ignore-scripts=false --reporter=append-only --config.node-linker=hoisted
+        $installExitCode = $LASTEXITCODE
+        if ($installExitCode -eq 0) {
+          $installSucceeded = $true
+          break
+        }
+        if ($attempt -lt 3) {
+          Write-Warning "pnpm install attempt $attempt failed with exit code $installExitCode; retrying."
+          Start-Sleep -Seconds (2 * $attempt)
+        }
+      }
+      if (!$installSucceeded) {
+        throw "pnpm install failed after 3 attempts; last exit code: $installExitCode."
       }
     } finally {
       Pop-Location
@@ -194,10 +233,12 @@ try {
       Remove-Item -LiteralPath $metadataPath -Recurse -Force
     }
   }
+  $removedShimTargets = Remove-CmdShimTargetComments $stageNodeModules
+  Write-Host "Removed $removedShimTargets build-path comments from pnpm shims"
   Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $stageDir 'node.exe')
   Copy-Item -LiteralPath (Join-Path $nodeRoot 'LICENSE') -Destination (Join-Path $stageDir 'share\licenses\node\LICENSE')
-  Copy-Item -LiteralPath $notices -Destination (Join-Path $stageDir 'share\dsh-desktop\THIRD_PARTY_NOTICES.md')
-  Copy-Item -LiteralPath $pnpmLock -Destination (Join-Path $stageDir 'share\dsh-desktop\runtime-pnpm-lock.yaml')
+  Copy-TextFileLf $notices (Join-Path $stageDir 'share\dsh-desktop\THIRD_PARTY_NOTICES.md')
+  Copy-TextFileLf $pnpmLock (Join-Path $stageDir 'share\dsh-desktop\runtime-pnpm-lock.yaml')
 
   $runtimeMetadata = [ordered]@{
     schemaVersion = 1

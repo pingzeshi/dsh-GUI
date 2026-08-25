@@ -22,9 +22,13 @@ archive_name=$7
 [[ $dsh_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'invalid dsh version' >&2; exit 2; }
 [[ $archive_name =~ ^[a-z0-9][a-z0-9._-]+\.tar\.gz$ ]] || { echo 'invalid archive name' >&2; exit 2; }
 
-for command_name in curl tar xz gzip sha256sum install mktemp; do
+for command_name in curl tar xz gzip sha256sum install mktemp sed; do
   command -v "$command_name" >/dev/null || { echo "missing build command: $command_name" >&2; exit 1; }
 done
+
+copy_text_lf() {
+  sed 's/\r$//' "$1" >"$2"
+}
 
 runtime_dir="$project_root/runtime"
 package_json="$runtime_dir/package.json"
@@ -66,7 +70,9 @@ tar -xJf "$node_archive" -C "$node_dist" --strip-components=1
   exit 1
 }
 
-cp "$package_json" "$pnpm_lock" "$pnpm_workspace" "$app_dir/"
+copy_text_lf "$package_json" "$app_dir/package.json"
+copy_text_lf "$pnpm_lock" "$app_dir/pnpm-lock.yaml"
+copy_text_lf "$pnpm_workspace" "$app_dir/pnpm-workspace.yaml"
 echo "Installing @deepseek-ai/dsh@$dsh_version from the pinned lockfile"
 (
   cd "$app_dir"
@@ -83,7 +89,8 @@ echo "Installing @deepseek-ai/dsh@$dsh_version from the pinned lockfile"
   done
   [[ $corepack_ready -eq 1 ]] || { echo 'unable to prepare pinned pnpm after 3 attempts' >&2; exit 1; }
   "$node_dist/bin/corepack" pnpm install \
-    --prod --frozen-lockfile --ignore-scripts=false --reporter=append-only
+    --prod --frozen-lockfile --ignore-scripts=false --reporter=append-only \
+    --store-dir "$work_dir/pnpm-store"
 )
 
 dsh_script="$app_dir/node_modules/@deepseek-ai/dsh/lib/bin.js"
@@ -95,8 +102,8 @@ dsh_script="$app_dir/node_modules/@deepseek-ai/dsh/lib/bin.js"
 
 install -m 0755 "$node_dist/bin/node" "$stage_dir/bin/node"
 install -m 0644 "$node_dist/LICENSE" "$stage_dir/share/licenses/node/LICENSE"
-install -m 0644 "$notices" "$stage_dir/share/dsh-desktop/THIRD_PARTY_NOTICES.md"
-install -m 0644 "$pnpm_lock" "$stage_dir/share/dsh-desktop/runtime-pnpm-lock.yaml"
+copy_text_lf "$notices" "$stage_dir/share/dsh-desktop/THIRD_PARTY_NOTICES.md"
+copy_text_lf "$pnpm_lock" "$stage_dir/share/dsh-desktop/runtime-pnpm-lock.yaml"
 mv "$app_dir/node_modules" "$stage_dir/lib/node_modules"
 # The immutable runtime is never managed by pnpm after packaging. Its local
 # metadata contains the build user's absolute store path and is not needed by
@@ -118,10 +125,12 @@ cat >"$stage_dir/runtime.json" <<EOF
 EOF
 
 "$stage_dir/bin/node" "$stage_dir/lib/node_modules/@deepseek-ai/dsh/lib/bin.js" --version >/dev/null
-if grep -R -I -q -- "$HOME/" "$stage_dir" || grep -R -I -q -- "$work_dir" "$stage_dir"; then
-  echo 'embedded runtime contains a build-machine absolute path' >&2
-  exit 1
-fi
+for build_path in "$project_root" "$work_dir"; do
+  if grep -R -I -F -q -- "$build_path" "$stage_dir"; then
+    echo "embedded runtime contains a build-machine absolute path: $build_path" >&2
+    exit 1
+  fi
+done
 
 echo 'Creating deterministic embedded runtime archive'
 export LC_ALL=C TZ=UTC
