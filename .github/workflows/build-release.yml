@@ -107,6 +107,8 @@ jobs:
       - build-windows-runtime
     runs-on: windows-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
 
     steps:
       - name: 签出源码
@@ -205,7 +207,7 @@ jobs:
           )
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: 上传 Release
+      - name: 上传 Actions 构建制品
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: DSH-Desktop-${{ steps.release-info.outputs.version }}-${{ github.sha }}
@@ -216,3 +218,87 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+      - name: 发布 GitHub 预发布版本
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release-info.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $shortSha = $env:GITHUB_SHA.Substring(0, 12)
+          $tag = "build-$env:GITHUB_SHA"
+          $title = "DSH Desktop $env:RELEASE_VERSION 自动构建 $shortSha"
+          $assets = @(
+            "release/DSH Desktop Setup $env:RELEASE_VERSION.exe"
+            "release/DSH Desktop-$env:RELEASE_VERSION-portable.exe"
+            'release/SHA256SUMS.txt'
+            'release/BUILD-INFO.txt'
+          )
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $notes = @"
+          此版本由 GitHub Actions 针对一次提交自动构建，属于预发布制品。
+
+          - 版本：$env:RELEASE_VERSION
+          - 分支：$env:GITHUB_REF_NAME
+          - 提交：$env:GITHUB_SHA
+          - 构建记录：$runUrl
+
+          请使用 SHA256SUMS.txt 校验下载文件。
+          "@
+
+          $releaseJson = & gh release view $tag `
+            --repo $env:GITHUB_REPOSITORY `
+            --json 'isDraft,url' 2> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $releaseUrl = ''
+
+          if ($releaseExists) {
+            $releaseInfo = $releaseJson | ConvertFrom-Json
+            $releaseUrl = [string]$releaseInfo.url
+            if ([bool]$releaseInfo.isDraft) {
+              & gh release upload $tag @assets `
+                --repo $env:GITHUB_REPOSITORY `
+                --clobber
+              if ($LASTEXITCODE -ne 0) {
+                throw "补齐 GitHub Release 草稿资产失败，退出码：$LASTEXITCODE"
+              }
+
+              & gh release edit $tag `
+                --repo $env:GITHUB_REPOSITORY `
+                --title $title `
+                --notes $notes `
+                --prerelease `
+                --draft=false `
+                --latest=false
+              if ($LASTEXITCODE -ne 0) {
+                throw "发布 GitHub Release 草稿失败，退出码：$LASTEXITCODE"
+              }
+            } else {
+              Write-Host "GitHub Release 已存在，复用：$releaseUrl"
+            }
+          } else {
+            & gh release create $tag @assets `
+              --repo $env:GITHUB_REPOSITORY `
+              --target $env:GITHUB_SHA `
+              --title $title `
+              --notes $notes `
+              --prerelease `
+              --latest=false
+            if ($LASTEXITCODE -ne 0) {
+              throw "发布 GitHub Release 失败，退出码：$LASTEXITCODE"
+            }
+          }
+
+          if ([string]::IsNullOrWhiteSpace($releaseUrl)) {
+            $releaseUrl = & gh release view $tag `
+              --repo $env:GITHUB_REPOSITORY `
+              --json url `
+              --jq '.url'
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseUrl)) {
+              throw '读取 GitHub Release 地址失败。'
+            }
+          }
+          "GitHub Release：$releaseUrl" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

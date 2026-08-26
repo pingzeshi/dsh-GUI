@@ -133,14 +133,16 @@ npm run dist:portable    # 仅 portable
 GitHub Actions 页面手动触发。流水线会分别在 Linux 和 Windows runner 上重建两份
 内嵌运行时，再在 Windows runner 上执行测试、运行时校验和正式打包。
 
-构建成功后，在对应的 Actions 运行记录底部下载
-`DSH-Desktop-<版本>-<提交 SHA>` 制品。制品包含 NSIS 安装版、便携版、
-`SHA256SUMS.txt` 和 `BUILD-INFO.txt`，保留 7 天。两份仅用于 job 间传递的运行时
-制品保留 1 天，以减少 Actions 存储占用。
+构建成功后，工作流会创建标签 `build-<完整提交 SHA>`，并发布对应的 GitHub
+prerelease。每个预发布版本包含 NSIS 安装版、便携版、`SHA256SUMS.txt` 和
+`BUILD-INFO.txt`；标签精确指向本次构建的提交，并且不会取代正式版本的 Latest 标记。
+相同提交重新运行时会复用原有预发布版本，不会重复创建或覆盖已发布的 Release。
 
-这里的 Release 指 `electron-builder` 生成的正式模式制品；工作流不会为每个提交创建
-Git 标签或 GitHub Release，避免污染正式发布历史。只有推送到 GitHub 的提交才会触发
-自动构建，本地提交可在推送前通过 `npm test` 和 `npm run runtime:verify` 检查。
+对应的 Actions 运行记录底部还会保留一份
+`DSH-Desktop-<版本>-<提交 SHA>` 构建制品 7 天，便于排查发布步骤；两份仅用于 job
+间传递的运行时制品保留 1 天，以减少 Actions 存储占用。只有推送到 GitHub 的提交
+才会自动触发，也可以从 Actions 页面手动运行；本地提交可在推送前通过 `npm test`
+和 `npm run runtime:verify` 检查。
 
 ## 目录结构
 
